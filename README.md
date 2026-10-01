@@ -1,8 +1,12 @@
-# Odměny
+# Odměny (ostrá verze 1.0)
 
 Hodnocení operátorů (tabáky a Kafe) jako samostatná aplikace na serveru, na adrese
 `/odmeny/`. S Trading Deskem sdílí jen server: má vlastní adresář, vlastní data
 i vlastní přihlašování.
+
+> **Tohle je ostrá verze, která běží v provozu.** Nové funkce vznikají ve verzi 2
+> (repozitář [`odmeny_v2`](https://github.com/ecko456/odmeny_v2), adresa `/odmeny_v2/`).
+> Sem jen opravy, a to jen po domluvě. Verze 1.0 je označená tagem `v1.0`.
 
 Vychází z `hodnoceni-operatoru.html`. Výpočty jsou převzaté beze změny
 (`private/core.js`, opravy jsou v kódu označené „Oprava:“), rozhraní je nové.
@@ -33,11 +37,16 @@ Vychází z `hodnoceni-operatoru.html`. Výpočty jsou převzaté beze změny
 
 ## Instalace na server (Ubuntu + Apache)
 
+Ostrá verze už na serveru běží; znovu instalovat ji není potřeba. Kdyby bylo (nový server):
+
 ```bash
-cd /root/trading_desk
-git pull
-sudo bash odmeny/deploy/install.sh
+git clone https://github.com/ecko456/odmeny.git /root/odmeny
+sudo tar -czf /root/odmeny-zaloha-$(date +%F-%H%M).tar.gz -C /var/lib odmeny 2>/dev/null || true
+sudo bash /root/odmeny/deploy/install.sh
 ```
+
+Instalace mění jen kód v `/var/www/odmeny`, šifrovaná data v `/var/lib/odmeny` nechává být
+(záloha v příkazu výše je jen pro jistotu).
 
 Instalace vypíše **kód pro první spuštění**. Otevři `https://<server>/odmeny/`,
 zadej kód, vytvoř kartičku, vytiskni ji nebo ulož obrázek a dokonči nastavení. Na
@@ -76,11 +85,12 @@ sudo runuser -u www-data -- env ODMENY_DATA_DIR=/var/lib/odmeny php /var/www/odm
 ## Vývoj a testy
 
 ```bash
-# lokální server (bez HTTPS jen na 127.0.0.1)
-ODMENY_DATA_DIR=/tmp/odmeny php -S 127.0.0.1:8490 -t odmeny odmeny/dev-router.php
+# lokální server (bez HTTPS jen na 127.0.0.1), z kořene repozitáře
+ODMENY_DATA_DIR=/tmp/odmeny php -S 127.0.0.1:8490 -t . dev-router.php
 
-# testy: server, šifrovaný tok, výpočty proti původní aplikaci
-python3 -m unittest discover -s odmeny/tests
+# testy: server, šifrovaný tok, výpočty proti původní aplikaci (tests/hodnoceni-operatoru.html)
+python3 -m unittest discover -s tests
+node tests/test_core.js
 ```
 
 Knihovny: QR kódy (qrcode-generator, MIT), čtení QR (jsQR, Apache 2.0), Excel

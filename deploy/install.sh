@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Instalace aplikace Odměny na Ubuntu s Apachem: sudo bash odmeny/deploy/install.sh
+# Instalace aplikace Odměny na Ubuntu s Apachem: sudo bash /root/odmeny/deploy/install.sh
 # Aplikace běží na adrese /odmeny/ vedle Trading Desku, ale nemá s ním nic společného:
 # vlastní adresář, vlastní data i vlastní přihlašování.
 
 if [[ "${EUID}" -ne 0 ]]; then
-  echo "Spusť instalaci přes sudo: sudo bash odmeny/deploy/install.sh"
+  echo "Spusť instalaci přes sudo: sudo bash /root/odmeny/deploy/install.sh"
   exit 1
 fi
 
@@ -27,6 +27,7 @@ rsync -a --delete \
   --exclude '/deploy/' \
   --exclude '/dev-router.php' \
   --exclude '/README.md' \
+  --exclude 'CLAUDE.md' \
   --exclude '.*' \
   "${SOURCE_DIR}/" "${TARGET_DIR}/"
 

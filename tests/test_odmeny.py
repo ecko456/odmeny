@@ -1,6 +1,6 @@
 """Odměny: server, šifrovaný tok v prohlížečovém kódu a výpočty.
 
-python3 -m unittest discover -s odmeny/tests
+python3 -m unittest discover -s tests
 """
 
 from datetime import datetime, timedelta, timezone
@@ -257,14 +257,13 @@ class OdmenyStaticTests(unittest.TestCase):
             self.assertNotRegex(text, r'\son(click|load|error|change|input)="', path.name)
 
     def test_deploy_keeps_apps_apart(self):
-        root = APP.parent
-        desk = (root / "deploy" / "install.sh").read_text(encoding="utf-8")
-        self.assertIn("--exclude '/odmeny/'", desk)
-        self.assertIn('rm -rf "${TARGET_DIR}/odmeny"', desk)
+        install = (APP / "deploy" / "install.sh").read_text(encoding="utf-8")
+        for pattern in ("--exclude '/tests/'", "--exclude 'CLAUDE.md'", 'TARGET_DIR="/var/www/odmeny"', 'DATA_DIR="/var/lib/odmeny"'):
+            self.assertIn(pattern, install)
         conf = (APP / "deploy" / "apache-odmeny.conf").read_text(encoding="utf-8")
         self.assertIn("private", conf.split("DirectoryMatch")[1])
         self.assertIn("SetEnv ODMENY_DATA_DIR /var/lib/odmeny", conf)
-        self.assertIn("/odmeny/data/", (root / ".gitignore").read_text(encoding="utf-8"))
+        self.assertIn("/data/", (APP / ".gitignore").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
