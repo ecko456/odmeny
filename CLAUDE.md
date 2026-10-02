@@ -8,7 +8,7 @@ poškodit.
 
 - **Nové funkce se dělají ve verzi 2**, v repozitáři `ecko456/odmeny_v2` (adresa `/odmeny_v2/`).
   Tady jen opravy, a to jen na výslovný pokyn uživatele.
-- Kód odpovídá tagu `v1.0`. Historie pochází z repozitáře `ecko456/trading_desk`, kde Odměny
+- Kód aplikace odpovídá verzi 1.0, commitu `db14339`. Historie pochází z repozitáře `ecko456/trading_desk`, kde Odměny
   dřív byly ve složce `odmeny/` (commit `ffe47d2` tam).
 - Na serveru nejspíš běží právě tahle verze; ověřit se to dá tak, že
   `grep -c ODM_VERSION /var/www/odmeny/lib/odmeny.php` vypíše 0. Když vypíše víc, běží tam
