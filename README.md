@@ -6,7 +6,7 @@ i vlastní přihlašování.
 
 > **Tohle je ostrá verze, která běží v provozu.** Nové funkce vznikají ve verzi 2
 > (repozitář [`odmeny_v2`](https://github.com/ecko456/odmeny_v2), adresa `/odmeny_v2/`).
-> Sem jen opravy, a to jen po domluvě. Verze 1.0 je commit `db14339`.
+> Ostrá verze se už neaktualizuje: jen poběží, dokud ji nenahradí verze 2. Verze 1.0 je commit `db14339`.
 
 Vychází z `hodnoceni-operatoru.html`. Výpočty jsou převzaté beze změny
 (`private/core.js`, opravy jsou v kódu označené „Oprava:“), rozhraní je nové.

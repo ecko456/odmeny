@@ -6,8 +6,11 @@ Claude Code si tenhle soubor načte sám na začátku každé session.
 výrobě: měsíčně tabáky (počet) a Kafe (ano, nebo ne). Uživatel ji používá a nesmí se
 poškodit.
 
-- **Nové funkce se dělají ve verzi 2**, v repozitáři `ecko456/odmeny_v2` (adresa `/odmeny_v2/`).
-  Tady jen opravy, a to jen na výslovný pokyn uživatele.
+- **Ostrá verze se už nebude aktualizovat** (rozhodnutí uživatele, 2. 10. 2026). Jen poběží,
+  dokud se nepřejde na verzi 2. Nic tu neměň a neinstaluj, ani opravy, pokud to uživatel
+  výslovně nezmění.
+- **Všechna práce se dělá ve verzi 2**, v repozitáři `ecko456/odmeny_v2` (adresa `/odmeny_v2/`).
+  Až bude hotová, ostrá verze se nahradí verzí 2 (čerstvá kopie dat z `/var/lib/odmeny`).
 - Kód aplikace odpovídá verzi 1.0, commitu `db14339`. Historie pochází z repozitáře `ecko456/trading_desk`, kde Odměny
   dřív byly ve složce `odmeny/` (commit `ffe47d2` tam).
 - Na serveru nejspíš běží právě tahle verze; ověřit se to dá tak, že
