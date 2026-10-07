@@ -14,6 +14,10 @@ declare(strict_types=1);
  * a historii zašifrovaných verzí.
  */
 
+// Verze tvaru dat, kterou klient posílá v hlavičce X-Odmeny-Client. Stránka otevřená
+// ještě před aktualizací by při uložení zahodila nová pole (oddělení u pozic), proto už
+// uložit nesmí. Verze 1.0 hlavičku neposílala.
+const ODM_MIN_CLIENT = 2;
 const ODM_SESSION_COOKIE = 'odmeny_session';
 const ODM_SESSION_HOURS = 12;
 const ODM_IDLE_MINUTES = 60;
@@ -194,6 +198,14 @@ function odm_json(mixed $payload, int $status = 200): never
 function odm_fail(string $message, int $status = 400, array $extra = []): never
 {
     odm_json(['error' => $message] + $extra, $status);
+}
+
+/** Zápis smí jen aktuální verze aplikace; stará otevřená stránka by jinak smazala nová pole. */
+function odm_require_client(): void
+{
+    if ((int)($_SERVER['HTTP_X_ODMENY_CLIENT'] ?? 0) < ODM_MIN_CLIENT) {
+        odm_fail('Aplikace byla aktualizována. Obnov stránku (F5) a přihlas se znovu; poslední změny z této stránky se neuložily.', 426, ['reload' => true]);
+    }
 }
 
 function odm_input(): array

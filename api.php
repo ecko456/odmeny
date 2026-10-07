@@ -114,6 +114,7 @@ try {
     }
 
     if ($action === 'data' && $method === 'POST') {
+        odm_require_client();
         $data = odm_input();
         $blob = odm_valid_blob($data['blob'] ?? null);
         $pdo = odm_db();

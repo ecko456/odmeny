@@ -1,4 +1,4 @@
-# Odměny (ostrá verze 1.0)
+# Odměny (ostrá verze 1.1)
 
 Hodnocení operátorů (tabáky a Kafe) jako samostatná aplikace na serveru, na adrese
 `/odmeny/`. S Trading Deskem sdílí jen server: má vlastní adresář, vlastní data
@@ -6,10 +6,29 @@ i vlastní přihlašování.
 
 > **Tohle je ostrá verze, která běží v provozu.** Nové funkce vznikají ve verzi 2
 > (repozitář [`odmeny_v2`](https://github.com/ecko456/odmeny_v2), adresa `/odmeny_v2/`).
-> Ostrá verze se už neaktualizuje: jen poběží, dokud ji nenahradí verze 2. Verze 1.0 je commit `db14339`.
+> Ostrá verze se aktualizuje jen na výslovné přání; jinak poběží, dokud ji nenahradí verze 2.
+> Verze 1.0 je commit `db14339`, verze 1.1 (7. 10. 2026) přidala oddělení u pozic a PDF pro audit.
 
 Vychází z `hodnoceni-operatoru.html`. Výpočty jsou převzaté beze změny
 (`private/core.js`, opravy jsou v kódu označené „Oprava:“), rozhraní je nové.
+
+## Co je nového ve verzi 1.1 (7. 10. 2026)
+
+- **PDF pro audit.** V části Lidé tlačítko **Export do PDF** stáhne přehled zaměstnanců
+  podle oddělení a úrovně:
+  - na první straně souhrn (počty, rozložení úrovní, přehled oddělení) a místo pro podpis;
+  - pak seznam po odděleních, v každém od nejvyšší úrovně (nejzkušenější) a dále podle
+    příjmení s českým řazením (Č za C, Ch za H);
+  - na konci popis úrovní u pozic, které ho mají vyplněný.
+
+  Nezařazení (bez pozice nebo úrovně) a vyřazení v PDF nejsou, aplikace po exportu napíše,
+  kolik jich vynechala. Tabáky ani jiné údaje o odměnách v PDF nejsou. PDF vzniká v prohlížeči
+  z dešifrovaných dat, server ho nevidí.
+- **Oddělení u pozic.** V části Pozice má každá pozice pole Oddělení (víc pozic může patřit
+  do jednoho oddělení). Když zůstane prázdné, pozice je oddělením sama pro sebe. Pole je stejné
+  jako ve verzi 2, takže se při přechodu na verzi 2 přenese. Oddělení je i v exportu zařazení.
+- **Aktualizace bez ztráty dat.** Data z verze 1.0 zůstanou beze změny. Stránka otevřená ještě
+  ve verzi 1.0 už nesmí uložit (oddělení by zahodila): ukáže „Neuloženo“ a stačí ji obnovit.
 
 ## Zabezpečení
 
@@ -37,7 +56,15 @@ Vychází z `hodnoceni-operatoru.html`. Výpočty jsou převzaté beze změny
 
 ## Instalace na server (Ubuntu + Apache)
 
-Ostrá verze už na serveru běží; znovu instalovat ji není potřeba. Kdyby bylo (nový server):
+Aktualizace na serveru (data zůstanou, záloha je jen pro jistotu; instalace 1.x databázi sama nezálohuje):
+
+```bash
+sudo tar -czf /root/odmeny-zaloha-$(date +%F-%H%M).tar.gz -C /var/lib odmeny
+cd /root/odmeny && git pull origin <větev>
+sudo bash /root/odmeny/deploy/install.sh
+```
+
+Pak v prohlížeči obnovit stránku (Ctrl+Shift+R). Nový server:
 
 ```bash
 git clone https://github.com/ecko456/odmeny.git /root/odmeny
@@ -93,6 +120,10 @@ python3 -m unittest discover -s tests
 node tests/test_core.js
 ```
 
+Průchod v prohlížeči (Playwright) pro PDF pro audit a oddělení: `tests/e2e_lide_pdf.js`,
+návod je v hlavičce skriptu. PDF uloží do `$S/lide.pdf`.
+
 Knihovny: QR kódy (qrcode-generator, MIT), čtení QR (jsQR, Apache 2.0), Excel
-(SheetJS, Apache 2.0), písma IBM Plex a Barlow (SIL OFL). Vše je přibalené,
+(SheetJS, Apache 2.0), PDF (jsPDF, MIT), písma IBM Plex a Barlow (SIL OFL; pro PDF
+podmnožina IBM Plex Sans v TTF). Vše je přibalené,
 aplikace nic nenačítá z cizích serverů.

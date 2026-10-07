@@ -13,6 +13,10 @@ const ODM_PRIVATE_FILES = [
     'core.js' => ['private/core.js', 'text/javascript; charset=utf-8'],
     'app.js' => ['private/app.js', 'text/javascript; charset=utf-8'],
     'xlsx.js' => ['private/vendor/xlsx.full.min.js', 'text/javascript; charset=utf-8'],
+    // PDF pro audit vzniká v prohlížeči (server data nevidí): jsPDF a písmo s diakritikou.
+    'jspdf.js' => ['private/vendor/jspdf.umd.min.js', 'text/javascript; charset=utf-8'],
+    'pdf-regular.ttf' => ['private/vendor/plex-sans-regular.ttf', 'font/ttf'],
+    'pdf-semibold.ttf' => ['private/vendor/plex-sans-semibold.ttf', 'font/ttf'],
 ];
 
 $name = (string)($_GET['f'] ?? '');

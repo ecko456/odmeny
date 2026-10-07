@@ -81,7 +81,7 @@ div.stack > * + * { margin-top: 0; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .grid-2.wide-right { grid-template-columns: minmax(290px, 380px) minmax(0, 1fr); }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-.form-grid.pos-head { grid-template-columns: minmax(0, 1fr) 180px; }
+.form-grid.pos-head { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 150px; }
 
 .empty { padding: 30px 16px; text-align: center; color: var(--ink-2); }
 .empty strong { display: block; margin-bottom: 4px; font: 600 19px/1.2 var(--disp); color: var(--ink); }

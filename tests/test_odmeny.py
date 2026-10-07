@@ -77,7 +77,7 @@ class Client:
             return error.code, dict(error.headers), error.read()
 
     def api(self, method, action, body=None, headers=None, query=""):
-        status, _, raw = self.request(method, f"/api.php?action={action}{query}", body, {"X-Odmeny": "1", "Sec-Fetch-Site": "same-origin", **(headers or {})})
+        status, _, raw = self.request(method, f"/api.php?action={action}{query}", body, {"X-Odmeny": "1", "X-Odmeny-Client": "2", "Sec-Fetch-Site": "same-origin", **(headers or {})})
         return status, json.loads(raw or b"{}")
 
     def setup(self):
@@ -116,7 +116,7 @@ class OdmenyHttpTests(unittest.TestCase):
         self.assertNotIn("style=", page)
 
     def test_private_code_needs_session(self):
-        for name in ("app.html", "app.css", "core.js", "app.js", "xlsx.js"):
+        for name in ("app.html", "app.css", "core.js", "app.js", "xlsx.js", "jspdf.js", "pdf-regular.ttf", "pdf-semibold.ttf"):
             status, _, body = self.client.request("GET", f"/app.php?f={name}")
             self.assertEqual(status, 401, name)
             self.assertEqual(body, b"")
@@ -131,6 +131,14 @@ class OdmenyHttpTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("javascript", headers["Content-Type"])
         self.assertIn(b"OdmApp", body)
+        # PDF pro audit vzniká v prohlížeči: knihovna a písmo s diakritikou až po odemčení.
+        status, headers, body = self.client.request("GET", "/app.php?f=jspdf.js")
+        self.assertEqual(status, 200)
+        self.assertIn(b"jsPDF", body)
+        for name in ("pdf-regular.ttf", "pdf-semibold.ttf"):
+            status, headers, body = self.client.request("GET", f"/app.php?f={name}")
+            self.assertEqual((status, headers["Content-Type"]), (200, "font/ttf"), name)
+            self.assertEqual(body[:4], b"\x00\x01\x00\x00", name)
 
     def test_api_rejects_foreign_requests(self):
         status, _, _ = self.client.request("GET", "/api.php?action=state")
@@ -204,6 +212,13 @@ class OdmenyHttpTests(unittest.TestCase):
         status, result = self.client.api("POST", "data", {"blob": b64(40), "base_rev": rev - 1})
         self.assertEqual(status, 409)
         self.assertEqual(result["rev"], rev)
+        # Stránka otevřená před aktualizací (bez hlavičky verze) už uložit nesmí,
+        # jinak by zahodila oddělení u pozic. Číst data smí dál.
+        for client in (None, "1"):
+            headers = {"X-Odmeny-Client": client} if client else {"X-Odmeny-Client": ""}
+            status, result = self.client.api("POST", "data", {"blob": b64(40), "base_rev": rev}, headers=headers)
+            self.assertEqual((status, result.get("reload")), (426, True), client)
+        self.assertEqual(self.client.api("GET", "data", headers={"X-Odmeny-Client": ""})[1]["rev"], rev)
         # Rychlé ukládání: celých zůstane posledních 30, starší z téže hodiny jen jedno.
         with sqlite3.connect(self.server.data / "odmeny.sqlite3") as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM versions").fetchone()[0], 31)

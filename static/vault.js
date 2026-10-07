@@ -22,6 +22,8 @@
   const QR_PREFIX = 'ODMENY:';
   const DEVICE_STORAGE = 'odmeny.device.v1';
   const DATA_AAD = 'odmeny/data/v1';
+  // Verze tvaru dat pro server (hlavička X-Odmeny-Client); 2 = oddělení u pozic.
+  const CLIENT_VERSION = '2';
 
   /* ------------------------------------------------------------ bajty */
 
@@ -226,7 +228,7 @@
         method,
         credentials: 'same-origin',
         cache: 'no-store',
-        headers: { 'X-Odmeny': '1', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+        headers: { 'X-Odmeny': '1', 'X-Odmeny-Client': CLIENT_VERSION, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
     } catch (error) {

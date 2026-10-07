@@ -1,4 +1,4 @@
-# Odměny, ostrá verze 1.0: poznámky pro Clauda
+# Odměny, ostrá verze 1.x: poznámky pro Clauda
 
 Claude Code si tenhle soubor načte sám na začátku každé session.
 
@@ -6,16 +6,37 @@ Claude Code si tenhle soubor načte sám na začátku každé session.
 výrobě: měsíčně tabáky (počet) a Kafe (ano, nebo ne). Uživatel ji používá a nesmí se
 poškodit.
 
-- **Ostrá verze se už nebude aktualizovat** (rozhodnutí uživatele, 2. 10. 2026). Jen poběží,
-  dokud se nepřejde na verzi 2. Nic tu neměň a neinstaluj, ani opravy, pokud to uživatel
-  výslovně nezmění.
-- **Všechna práce se dělá ve verzi 2**, v repozitáři `ecko456/odmeny_v2` (adresa `/odmeny_v2/`).
+- **Ostrá verze se aktualizuje jen na výslovné přání uživatele** (rozhodnutí z 2. 10. 2026).
+  Jinak jen poběží, dokud se nepřejde na verzi 2. Nic tu neměň a neinstaluj, ani opravy,
+  pokud o to uživatel výslovně nepožádá.
+- **Výjimka 7. 10. 2026 (verze 1.1):** uživatel chtěl přímo v ostré verzi PDF lidí pro auditora
+  (Lidé → Export do PDF) a k tomu oddělení u pozic. Viz „Verze 1.1“ níže.
+- **Nové funkce jinak vznikají ve verzi 2**, v repozitáři `ecko456/odmeny_v2` (adresa `/odmeny_v2/`).
   Až bude hotová, ostrá verze se nahradí verzí 2 (čerstvá kopie dat z `/var/lib/odmeny`).
-- Kód aplikace odpovídá verzi 1.0, commitu `db14339`. Historie pochází z repozitáře `ecko456/trading_desk`, kde Odměny
+  **Verze 2 zatím PDF pro audit nemá**: před přechodem ho tam přenes (oddělení už zná).
+- Verze 1.0 = commit `db14339`. Historie pochází z repozitáře `ecko456/trading_desk`, kde Odměny
   dřív byly ve složce `odmeny/` (commit `ffe47d2` tam).
-- Na serveru nejspíš běží právě tahle verze; ověřit se to dá tak, že
-  `grep -c ODM_VERSION /var/www/odmeny/lib/odmeny.php` vypíše 0. Když vypíše víc, běží tam
-  novější verze a tenhle repozitář ji nepopisuje: zastav se a zeptej se uživatele.
+- Co běží na serveru: `grep -c ODM_MIN_CLIENT /var/www/odmeny/lib/odmeny.php` vypíše 0 u verze 1.0
+  a víc u 1.1. `grep -c ODM_VERSION` musí vypsat 0; když vypíše víc, běží tam verze 2 a tenhle
+  repozitář ji nepopisuje: zastav se a zeptej se uživatele.
+
+## Verze 1.1 (7. 10. 2026)
+
+- **Oddělení u pozic:** `p.dept` (nejvýš 60 znaků, ořezané mezery), stejné pole a stejné čištění
+  jako ve verzi 2 (`sanitizeState`). `deptOf(p)`: prázdné oddělení = název pozice. Pole v editoru
+  pozice (`#posDept`), oddělení i v exportu zařazení (poslední sloupec; import čte podle hlavičky).
+- **PDF pro audit** (`#btnPeoplePdf`, `exportPeoplePdf`, `drawPeoplePdf` v `private/app.js`):
+  - data připraví `auditRoster()` v `core.js`: jen nevyřazení s pozicí i úrovní; oddělení podle
+    abecedy (`Intl.Collator('cs', {numeric:true})`), v oddělení úroveň 4→1, pak příjmení a jméno;
+  - jsPDF a podmnožina IBM Plex Sans (TTF) jako ve verzi 2, `app.php` je vydá až po odemčení;
+  - sazba: souhrn s podpisy na první straně, oddělení se nedělí, když se vejde na stranu,
+    osamocené řádky se nepřelévají, dlouhé texty se zalamují (nezkracují), zápatí „Strana X / Y“;
+  - v PDF nejsou tabáky ani jiné údaje o odměnách, jen zařazení a úrovně.
+- **Stará otevřená stránka:** klient posílá `X-Odmeny-Client: 2` (`static/vault.js`), server
+  (`odm_require_client`, `ODM_MIN_CLIENT`) odmítne uložení bez ní kódem 426. Stránka z 1.0 by
+  jinak při uložení zahodila oddělení. Nový klient na 426 vyzve k obnovení stránky.
+- Ověřeno: unit testy, `tests/e2e_lide_pdf.js` (Playwright), vizuální kontrola PDF (PyMuPDF,
+  malá data, 53 a 150 lidí) a aktualizace 1.0 → 1.1 na lokálním Apachi s otevřenou starou záložkou.
 
 ## Tři oddělené projekty (dřív jeden repozitář)
 
@@ -39,7 +60,7 @@ poškodit.
 - Aplikace běží jen za HTTPS (Apache) a data musí zůstat šifrovaná a přístupná jen po přihlášení.
 - Opatrně. **Nepushuj neotestovaný kód.** Před každou změnou v ostré verzi musí mít uživatel
   zálohu `/var/lib/odmeny`, třeba `sudo tar -czf /root/odmeny-zaloha-$(date +%F-%H%M).tar.gz -C /var/lib odmeny`.
-- Instalace 1.0 (`deploy/install.sh`) před aktualizací databázi **nezálohuje** (to umí až
+- Instalace 1.x (`deploy/install.sh`) před aktualizací databázi **nezálohuje** (to umí až
   verze 2). Při jakékoli opravě proto dej uživateli příkaz se zálohou.
 - Do commitů, PR, kódu ani dokumentace nepiš identifikátor modelu. Patičku commitu ber
   z pokynů aktuální session. Commit message česky: `Odměny: co se změnilo`.
@@ -61,7 +82,8 @@ poškodit.
 - `deploy/`: instalace a konfigurace Apache.
 - `tests/`:
   - `test_odmeny.py` (server a šifrovaný tok);
-  - `test_core.js` (výpočty proti původní aplikaci `tests/hodnoceni-operatoru.html`).
+  - `test_core.js` (výpočty proti původní aplikaci `tests/hodnoceni-operatoru.html`, oddělení, PDF data);
+  - `e2e_lide_pdf.js` (Playwright: oddělení, PDF, mobil, výzva staré stránce; návod v hlavičce).
 - Podrobný popis architektury, výpočtů a datového modelu je v `CLAUDE.md` repozitáře
   `odmeny_v2`. Verze 2 z této verze vychází.
 
@@ -70,6 +92,7 @@ poškodit.
 ```bash
 python3 -m unittest discover -s tests     # 12 testů, pár vteřin
 node tests/test_core.js
+# PDF: stažené PDF z e2e jde vykreslit do PNG přes PyMuPDF (import pymupdf) a prohlédnout
 # lokální server s čistými daty
 ODMENY_DATA_DIR=/tmp/odm php -S 127.0.0.1:8490 -t . dev-router.php
 ```

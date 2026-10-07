@@ -433,6 +433,8 @@ function levelOf(e){
   const lv=n?pos.levels[n-1]:null;
   return {pos,n,lv,base:lv?Math.max(0,Math.round(+lv.tabaky||0)):0};
 }
+/* Oddělení pozice. Když není vyplněné, je pozice oddělením sama pro sebe (stejně jako ve verzi 2). */
+function deptOf(p){return (p&&(p.dept||"").trim())||(p&&(p.name||"").trim())||"Bez oddělení";}
 /* nejvyšší splněný řádek pravidel: {at: práh, t: tabáky} */
 function pickRule(rules,val){
   let best=null;
@@ -609,16 +611,47 @@ function exportRows(rows){
   return {head,body,title:"Hodnoceni "+(p?p.id:"bez-obdobi")};
 }
 
+/* ---------------- lidé podle oddělení a úrovně (PDF pro audit) ----------------
+   Jen zařazení lidé: mají pozici i úroveň a nejsou vyřazení. Oddělení podle abecedy,
+   v oddělení od nejvyšší úrovně, pak podle příjmení a jména (české řazení: Č za C, Ch za H). */
+function auditRoster(){
+  const col=new Intl.Collator("cs",{numeric:true});
+  const groups=new Map();
+  const levels=[0,0,0,0];
+  const positions=new Set();
+  let unassigned=0,excluded=0;
+  Object.values(S.employees).forEach(e=>{
+    if(e.excluded){excluded++;return;}
+    const L=levelOf(e);
+    if(!L.pos||!L.n){unassigned++;return;}
+    const dept=deptOf(L.pos);
+    if(!groups.has(dept))groups.set(dept,{dept,people:[],levels:[0,0,0,0],positions:new Set()});
+    const g=groups.get(dept);
+    g.people.push({key:e.key,last:e.last,first:e.first,pos:L.pos.name||"(bez názvu)",n:L.n,level:L.lv.name||LEVEL_NAMES[L.n-1]});
+    g.levels[L.n-1]++;g.positions.add(L.pos.id);
+    levels[L.n-1]++;positions.add(L.pos.id);
+  });
+  const byName=(a,b)=>col.compare(a.last,b.last)||col.compare(a.first,b.first)||col.compare(a.pos,b.pos);
+  const list=[...groups.values()].sort((a,b)=>col.compare(a.dept,b.dept)).map(g=>({
+    dept:g.dept,people:g.people.sort((a,b)=>b.n-a.n||byName(a,b)),levels:g.levels,
+    positions:S.positions.filter(p=>g.positions.has(p.id)).map(p=>p.name||"(bez názvu)").sort(col.compare)}));
+  /* úrovně pozic, které v přehledu jsou: pro vysvětlivky na konci */
+  const used=S.positions.filter(p=>positions.has(p.id))
+    .sort((a,b)=>col.compare(deptOf(a),deptOf(b))||col.compare(a.name,b.name))
+    .map(p=>({name:p.name||"(bez názvu)",dept:deptOf(p),levels:p.levels.map((lv,i)=>({n:i+1,name:lv.name||LEVEL_NAMES[i],desc:String(lv.desc||"").trim()}))}));
+  return {groups:list,total:levels.reduce((a,b)=>a+b,0),levels,positions:used,unassigned,excluded};
+}
+
 /* ---------------- export a import zařazení ----------------
    Cíl: zařazení na pozice a podkategorie vyplnit jednou a pak jen načítat.
    Soubor jde editovat v Excelu a poslat zpátky - matchuje se na příjmení + jméno. */
 function rosterSheets(){
   const people=Object.values(S.employees).sort((a,b)=>norm(a.last).localeCompare(norm(b.last),"cs"));
-  const main=[["Příjmení","Jméno","Pozice","Úroveň (1-4)","Název úrovně","Tabáky za úroveň","Zkrácený pátek","Vyřazen ze seznamu","Poznámka"]];
+  const main=[["Příjmení","Jméno","Pozice","Úroveň (1-4)","Název úrovně","Tabáky za úroveň","Zkrácený pátek","Vyřazen ze seznamu","Poznámka","Oddělení"]];
   people.forEach(e=>{const L=levelOf(e);
-    main.push([e.last,e.first,L.pos?L.pos.name:"",L.n||"",L.n?L.lv.name:"",L.n?L.base:"",e.shortFri?"ano":"",e.excluded?"ano":"",e.note||""]);});
-  const posSheet=[["Pozice","Úroveň","Název úrovně","Tabáky","Co úroveň obnáší"]];
-  S.positions.forEach(p=>p.levels.forEach((lv,i)=>posSheet.push([p.name,i+1,lv.name,+lv.tabaky||0,lv.desc||""])));
+    main.push([e.last,e.first,L.pos?L.pos.name:"",L.n||"",L.n?L.lv.name:"",L.n?L.base:"",e.shortFri?"ano":"",e.excluded?"ano":"",e.note||"",L.pos?deptOf(L.pos):""]);});
+  const posSheet=[["Pozice","Oddělení","Úroveň","Název úrovně","Tabáky","Co úroveň obnáší"]];
+  S.positions.forEach(p=>p.levels.forEach((lv,i)=>posSheet.push([p.name,deptOf(p),i+1,lv.name,+lv.tabaky||0,lv.desc||""])));
   const rules=[["Pozice","Typ","Práh","Tabáky","Význam"]];
   S.positions.forEach(p=>{
     rules.push([p.name,"maximum","",posMax(p),p.max!=null&&p.max!==""?"vlastní strop pozice":"podle nejvyšší úrovně"]);
@@ -782,7 +815,7 @@ function sanitizeState(input){
   const out=blank();
   out.demo=!!o.demo;
   out.positions=o.positions.filter(p=>typeof p.id==="string"&&SAFE_ID.test(p.id)).slice(0,100).map(p=>({
-    id:p.id,name:str(p.name,80),
+    id:p.id,name:str(p.name,80),dept:str(p.dept,60).trim(),
     max:(p.max==null||p.max==="")?null:int(p.max,0,0,200),
     levels:LEVEL_NAMES.map((n,i)=>{const l=obj(arr(p.levels)[i]);
       return {name:str(l.name==null?n:l.name,40),tabaky:int(l.tabaky,(i+1)*2,0,100),desc:str(l.desc,500)};}),

@@ -187,6 +187,70 @@ test('sanitizeState zahodí podvržená data', () => {
   return null;
 });
 
+test('oddělení u pozice přežije čištění dat a je stejné jako ve verzi 2', () => {
+  const core = loadCore();
+  core.__in = JSON.stringify({ positions: [
+    { id: 'p_a', name: 'CNC', dept: '  Obrobna  ', levels: [] },
+    { id: 'p_b', name: 'Balení', dept: 'x'.repeat(80), levels: [] },
+    { id: 'p_c', name: 'Montáž', levels: [] },
+  ] });
+  const out = JSON.parse(run(core, 'S = sanitizeState(JSON.parse(__in)); JSON.stringify(S)'));
+  assert.deepStrictEqual(out.positions.map(p => p.dept), ['Obrobna', 'x'.repeat(60), '']);
+  // Bez oddělení je pozice oddělením sama pro sebe.
+  assert.deepStrictEqual(JSON.parse(run(core, 'JSON.stringify(S.positions.map(deptOf))')), ['Obrobna', 'x'.repeat(60), 'Montáž']);
+  assert.strictEqual(run(core, 'deptOf({ name: "", dept: " " })'), 'Bez oddělení');
+  // Export zařazení má oddělení na konci (import čte sloupce podle hlavičky, takže se nic nerozbije).
+  core.__emp = JSON.stringify({ k: { key: 'k', first: 'Jan', last: 'Novák', positionId: 'p_a', level: 2, note: '' } });
+  const sheets = JSON.parse(run(core, 'S.employees = JSON.parse(__emp); JSON.stringify(rosterSheets())'));
+  assert.strictEqual(sheets.main[0][9], 'Oddělení');
+  assert.strictEqual(sheets.main[1][9], 'Obrobna');
+  assert.deepStrictEqual(sheets.posSheet[0].slice(0, 2), ['Pozice', 'Oddělení']);
+  return null;
+});
+
+test('lidé pro PDF: jen zařazení, podle oddělení, úrovně a českého řazení jmen', () => {
+  const core = loadCore();
+  const person = (last, first, positionId, level, extra = {}) => ({ key: `${last}|${first}`, last, first, positionId, level, note: '', ...extra });
+  core.__in = JSON.stringify({
+    positions: [
+      { id: 'p_cnc', name: 'CNC', dept: 'Obrobna', levels: [{ name: 'Nováček', desc: 'Pod dohledem.' }, {}, {}, { name: 'Profík' }] },
+      { id: 'p_fre', name: 'Frézka', dept: 'Obrobna', levels: [] },
+      { id: 'p_mon', name: 'Montáž', levels: [] },
+      { id: 'p_kon', name: 'Kontrola', dept: 'Linka 10', levels: [] },
+      { id: 'p_k2', name: 'Kontrola 2', dept: 'Linka 2', levels: [] },
+    ],
+    employees: Object.fromEntries([
+      person('Hrubý', 'Jan', 'p_cnc', 2), person('Chalupa', 'Jan', 'p_cnc', 2), person('Cibulka', 'Jan', 'p_fre', 2),
+      person('Čermák', 'Jan', 'p_cnc', 2), person('Dvořák', 'Jan', 'p_cnc', 2), person('Novák', 'Petr', 'p_cnc', 4),
+      person('Novák', 'Adam', 'p_fre', 4), person('Řezníček', 'Jan', 'p_cnc', 1), person('Růžička', 'Jan', 'p_cnc', 1),
+      person('Žák', 'Jan', 'p_mon', 3), person('Zeman', 'Jan', 'p_mon', 3), person('Šimek', 'Jan', 'p_mon', 3), person('Sýkora', 'Jan', 'p_mon', 3),
+      person('Kos', 'Jan', 'p_kon', 1), person('Lín', 'Jan', 'p_k2', 1),
+      person('Vyřazený', 'Karel', 'p_cnc', 4, { excluded: true }), person('Bezpozice', 'Jana', null, null),
+      person('Bezúrovně', 'Petr', 'p_mon', null),
+    ].map(e => [e.key, e])),
+  });
+  const r = JSON.parse(run(core, 'S = sanitizeState(JSON.parse(__in)); JSON.stringify(auditRoster())'));
+  assert.deepStrictEqual([r.total, r.unassigned, r.excluded], [15, 2, 1]);
+  assert.deepStrictEqual(r.groups.map(g => g.dept), ['Linka 2', 'Linka 10', 'Montáž', 'Obrobna'], 'oddělení podle abecedy, čísla přirozeně');
+  const obrobna = r.groups[3];
+  // Od nejvyšší úrovně; Č za C, Ch za H, Ř za R.
+  assert.deepStrictEqual(obrobna.people.map(p => `${p.n} ${p.last} ${p.first}`), [
+    '4 Novák Adam', '4 Novák Petr', '2 Cibulka Jan', '2 Čermák Jan', '2 Dvořák Jan', '2 Hrubý Jan', '2 Chalupa Jan', '1 Růžička Jan', '1 Řezníček Jan',
+  ]);
+  assert.deepStrictEqual(obrobna.levels, [2, 5, 0, 2], 'počty podle úrovně 1–4');
+  assert.deepStrictEqual(obrobna.positions, ['CNC', 'Frézka']);
+  assert.deepStrictEqual(r.groups[2].people.map(p => p.last), ['Sýkora', 'Šimek', 'Zeman', 'Žák'], 'Š za S, Ž za Z');
+  assert.deepStrictEqual(r.levels, [4, 5, 4, 2]);
+  assert.strictEqual(obrobna.people[0].level, 'Profík');
+  assert.strictEqual(obrobna.people[0].pos, 'Frézka');
+  // Vysvětlivky úrovní: jen pozice, které v přehledu jsou, seřazené podle oddělení.
+  assert.deepStrictEqual(r.positions.map(p => `${p.dept}/${p.name}`), ['Linka 2/Kontrola 2', 'Linka 10/Kontrola', 'Montáž/Montáž', 'Obrobna/CNC', 'Obrobna/Frézka']);
+  assert.strictEqual(r.positions[3].levels[0].desc, 'Pod dohledem.');
+  const names = JSON.stringify(r);
+  for (const hidden of ['Vyřazený', 'Bezpozice', 'Bezúrovně']) assert.ok(!names.includes(hidden), hidden);
+  return null;
+});
+
 test('CSV v UTF-8 i Windows-1250', () => {
   const core = loadCore();
   core.__utf = new TextEncoder().encode('Jméno;Šťastný;OČR');

@@ -121,7 +121,10 @@ async function flushSave() {
     store.error = null;
   } catch (error) {
     store.dirty = true;
-    if (error.status === 409) {
+    if (error.status === 426) {
+      store.error = 'Aplikace byla aktualizována, obnov stránku.';
+      updatedElsewhere();
+    } else if (error.status === 409) {
       store.conflict = true;
       resolveConflict();
     } else if (error.status === 401) {
@@ -139,6 +142,14 @@ async function flushSave() {
     renderSaveState();
     if (store.dirty && !store.conflict && !store.error) onStateChange();
   }
+}
+
+let reloadAsked = false;
+async function updatedElsewhere() {
+  if (reloadAsked) return;
+  reloadAsked = true;
+  await dialog({ title: 'Aplikace byla aktualizována', html: '<p>Na serveru běží nová verze aplikace. Obnov stránku a přihlas se znovu. Změny z posledních několika vteřin se nemusely uložit.</p>', ok: 'Obnovit stránku', cancel: '' });
+  location.reload();
 }
 
 async function resolveConflict() {
@@ -888,7 +899,7 @@ function renderPositions() {
   if (!ui.selPos || !S.positions.some(x => x.id === ui.selPos)) ui.selPos = S.positions[0] ? S.positions[0].id : null;
   const p = S.positions.find(x => x.id === ui.selPos);
   $('#posList').innerHTML = S.positions.length ? S.positions.map(x => `<button class="list-item" type="button" data-selpos="${esc(x.id)}" aria-current="${x.id === ui.selPos}">
-      <span class="nm"><b>${esc(x.name || '(bez názvu)')}</b><span>${counts[x.id] || 0} lidí · úrovně ${x.levels.map(l => +l.tabaky || 0).join(' / ')} · max ${posMax(x)}</span></span>
+      <span class="nm"><b>${esc(x.name || '(bez názvu)')}</b><span>${(x.dept || '').trim() && x.dept.trim() !== x.name ? `${esc(x.dept.trim())} · ` : ''}${counts[x.id] || 0} lidí · úrovně ${x.levels.map(l => +l.tabaky || 0).join(' / ')} · max ${posMax(x)}</span></span>
     </button>`).join('') : emptyState('Žádné pozice', 'Přidej první pozici tlačítkem nahoře.');
   $('#posSplit').classList.toggle('show-detail', ui.posOpen);
   const editor = $('#posEditor');
@@ -898,8 +909,10 @@ function renderPositions() {
     <div class="card">
       <div class="form-grid pos-head">
         <label class="field"><span>Název pozice</span><input type="text" id="posName" value="${esc(p.name)}" maxlength="80"></label>
+        <label class="field"><span>Oddělení</span><input type="text" id="posDept" value="${esc(p.dept || '')}" maxlength="60" placeholder="${esc(p.name || 'stejné jako pozice')}" list="deptList"><datalist id="deptList">${[...new Set(S.positions.map(x => (x.dept || '').trim()).filter(Boolean))].map(d => `<option value="${esc(d)}"></option>`).join('')}</datalist></label>
         <label class="field"><span>Maximum tabáků</span><input type="number" id="posMax" value="${p.max != null && p.max !== '' ? p.max : ''}" placeholder="${posMaxAuto(p)}" min="0" max="200" step="1"></label>
       </div>
+      <p class="small muted">Oddělení seskupuje lidi v PDF pro audit (Lidé → Export do PDF). Když ho nevyplníš, pozice je oddělením sama pro sebe.</p>
       <p class="small muted">${counts[p.id] || 0} lidí na této pozici. Maximum je strop po sečtení úrovně a docházky; bonus za víkendy nikoho nepustí výš. ${p.max != null && p.max !== '' ? `Vlastní maximum ${posMax(p)}. Smaž hodnotu pro návrat k nejvyšší úrovni (${posMaxAuto(p)}).` : `Teď podle nejvyšší úrovně: ${posMaxAuto(p)}.`}</p>
       <div class="row end"><button class="btn danger small" type="button" id="posDel">Smazat pozici</button></div>
     </div>
@@ -924,6 +937,10 @@ function renderPositions() {
     const label = $(`#posList [data-selpos="${CSS.escape(p.id)}"] b`);
     if (label) label.textContent = p.name || '(bez názvu)';
     refresh();
+  };
+  $('#posDept').onchange = event => {
+    p.dept = String(event.target.value).trim().slice(0, 60);
+    save(); renderPositions();
   };
   $('#posMax').onchange = event => {
     const v = String(event.target.value).trim();
@@ -1459,8 +1476,8 @@ async function exportRoster() {
     const stamp = new Date().toISOString().slice(0, 10);
     const sheet = (rows, cols) => { const ws = X.utils.aoa_to_sheet(rows.map(row => row.map(safeCell))); ws['!cols'] = cols.map(wch => ({ wch })); return ws; };
     const wb = X.utils.book_new();
-    X.utils.book_append_sheet(wb, sheet(main, [18, 14, 18, 12, 16, 16, 15, 18, 28]), 'Zařazení');
-    X.utils.book_append_sheet(wb, sheet(posSheet, [18, 8, 16, 9, 60]), 'Úrovně');
+    X.utils.book_append_sheet(wb, sheet(main, [18, 14, 18, 12, 16, 16, 15, 18, 28, 18]), 'Zařazení');
+    X.utils.book_append_sheet(wb, sheet(posSheet, [18, 18, 8, 16, 9, 60]), 'Úrovně');
     X.utils.book_append_sheet(wb, sheet(rules, [18, 9, 7, 8, 34]), 'Pravidla');
     downloadFile(`zarazeni-${stamp}.xlsx`, new Blob([X.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
   } catch (error) { toast(`Export se nepovedl: ${error.message}`, true); }
@@ -1476,6 +1493,328 @@ async function readRoster(file) {
     if (!res.err) { save(); ui.selPerson = null; renderAll(); toast('Zařazení načteno.'); }
   } catch (error) {
     $('#rosterMsg').innerHTML = `<div class="note e">Soubor nejde otevřít: ${esc(error.message)}</div>`;
+  }
+}
+
+/* ==========================================================================
+   LIDÉ DO PDF PRO AUDIT: vzniká v prohlížeči z dešifrovaných dat, server obsah nevidí
+   ========================================================================== */
+function zamW(n) { return n === 1 ? 'zaměstnanec' : (n >= 2 && n <= 4) ? 'zaměstnanci' : 'zaměstnanců'; }
+
+async function pdfAsset(name) {
+  const res = await fetch(`app.php?f=${name}&v=${document.body.dataset.privateVersion || '1'}`, { credentials: 'same-origin' });
+  if (!res.ok) throw new Error(`nepodařilo se načíst ${name} (${res.status})`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+async function newPdf() {
+  if (!window.jspdf) await OdmLock.loadScript(`app.php?f=jspdf.js&v=${document.body.dataset.privateVersion || '1'}`);
+  const [regular, semibold] = await Promise.all([pdfAsset('pdf-regular.ttf'), pdfAsset('pdf-semibold.ttf')]);
+  const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', compress: true });
+  doc.addFileToVFS('Plex-Regular.ttf', regular);
+  doc.addFont('Plex-Regular.ttf', 'Plex', 'normal');
+  doc.addFileToVFS('Plex-SemiBold.ttf', semibold);
+  doc.addFont('Plex-SemiBold.ttf', 'Plex', 'bold');
+  return doc;
+}
+
+function drawPeoplePdf(doc, d) {
+  const W = 210, H = 297, M = 16, CW = W - 2 * M, BOTTOM = H - 20, PAGE = BOTTOM - M;
+  // Barvy aplikace (světlý režim).
+  const C = {
+    ink: [27, 31, 29], ink2: [85, 92, 88], ink3: [133, 139, 134], line: [222, 221, 212], line2: [198, 196, 184],
+    soft: [243, 242, 236], acc: [14, 107, 93], accSoft: [220, 235, 230], accLine: [155, 197, 187], white: [255, 255, 255],
+  };
+  // Úrovně stejně jako odznaky v aplikaci: od světlé (1) po plnou (4).
+  const LV = [
+    { fill: [232, 230, 221], text: C.ink2 },
+    { fill: C.accSoft, text: C.acc, stroke: C.accLine },
+    { fill: C.accLine, text: C.ink },
+    { fill: C.acc, text: C.white },
+  ];
+  const mm = pt => pt * 0.3528;
+  const LH = (size, factor = 1.3) => mm(size) * factor;
+  const font = (size, bold = false, color = C.ink) => { doc.setFont('Plex', bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(...color); };
+  // text(): top = horní hrana řádku; mid(): cy = svislý střed (podle výšky verzálek, asi 0,7 em)
+  const text = (s, x, top, size, o = {}) => { font(size, o.bold, o.color || C.ink); doc.text(String(s), x, top + mm(size) * 0.92, { align: o.align || 'left', charSpace: o.space || 0 }); };
+  const mid = (s, x, cy, size, o = {}) => { font(size, o.bold, o.color || C.ink); doc.text(String(s), x, cy + mm(size) * 0.35, { align: o.align || 'left' }); };
+  // Údaje se nezkracují, dlouhý text se zalomí na další řádek.
+  const split = (s, width, size, bold = false) => { font(size, bold); return doc.splitTextToSize(String(s), width); };
+  const width = (s, size, bold = false) => { font(size, bold); return doc.getTextWidth(String(s)); };
+  const box = (color, x, top, w, h, r = 0) => { doc.setFillColor(...color); if (r) doc.roundedRect(x, top, w, h, Math.min(r, w / 2, h / 2), Math.min(r, w / 2, h / 2), 'F'); else doc.rect(x, top, w, h, 'F'); };
+  const hline = (at, color = C.line, lw = 0.2, x1 = M, x2 = M + CW) => { doc.setDrawColor(...color); doc.setLineWidth(lw); doc.line(x1, at, x2, at); };
+  const badge = (n, x, cy, size = 4.6) => {
+    const s = LV[n - 1];
+    doc.setFillColor(...s.fill);
+    if (s.stroke) { doc.setDrawColor(...s.stroke); doc.setLineWidth(0.25); doc.roundedRect(x, cy - size / 2, size, size, 1.1, 1.1, 'FD'); }
+    else doc.roundedRect(x, cy - size / 2, size, size, 1.1, 1.1, 'F');
+    mid(n, x + size / 2, cy, size * 1.72, { bold: true, color: s.text, align: 'center' });
+  };
+  // Pruh rozložení úrovní; segmenty oddělené mezerou, popisky jen tam, kam se vejdou.
+  const bar = (counts, x, top, w, h, labels) => {
+    const total = counts.reduce((a, b) => a + b, 0);
+    if (!total) return;
+    const parts = counts.map((c, i) => [c, i]).filter(([c]) => c);
+    const gap = h > 4 ? 0.8 : 0.5;
+    const avail = w - gap * (parts.length - 1);
+    let cx = x;
+    parts.forEach(([c, i]) => {
+      const sw = avail * c / total;
+      box(LV[i].fill, cx, top, sw, h, h > 4 ? 1.2 : 0.7);
+      if (labels && sw > 9) mid(c, cx + sw / 2, top + h / 2, 8, { bold: true, color: LV[i].text, align: 'center' });
+      cx += sw + gap;
+    });
+  };
+  let y = M;
+  const newPage = () => { doc.addPage(); y = M; };
+  const need = h => { if (y + h > BOTTOM) { newPage(); return true; } return false; };
+
+  // ---- titulní část
+  text('ODMĚNY · HODNOCENÍ OPERÁTORŮ', M, y, 7.5, { bold: true, color: C.acc, space: 0.35 });
+  text(`Stav k ${d.date}, ${d.time}`, M + CW, y, 8.5, { color: C.ink2, align: 'right' });
+  y += 7.5;
+  text('Zaměstnanci podle oddělení a úrovně', M, y, 21, { bold: true });
+  y += mm(21) * 1.32;
+  const lede = split('Přehled zařazených zaměstnanců. V každém oddělení jsou seřazení podle dosažené úrovně, od nejzkušenějších, a dále podle příjmení.', CW * 0.8, 10);
+  lede.forEach((line, i) => text(line, M, y + i * LH(10, 1.42), 10, { color: C.ink2 }));
+  y += lede.length * LH(10, 1.42) + 3.5;
+  doc.setDrawColor(...C.acc); doc.setLineWidth(0.7); doc.line(M, y, M + 28, y);
+  y += 8;
+
+  // ---- souhrn
+  const avg = d.levels.reduce((s, c, i) => s + c * (i + 1), 0) / d.total;
+  const tiles = [['Zaměstnanců', d.total], ['Oddělení', d.groups.length], ['Pozic', d.positions.length], ['Průměrná úroveň', nf(avg, 1)]];
+  const tgap = 4, tw = (CW - tgap * 3) / 4, th = 19;
+  tiles.forEach(([label, value], i) => {
+    const x = M + i * (tw + tgap);
+    box(C.soft, x, y, tw, th, 2.4);
+    text(label, x + 4.2, y + 3.8, 8, { color: C.ink2 });
+    text(value, x + 4.2, y + 8.8, 17, { bold: true });
+  });
+  y += th + 9;
+
+  text('Rozložení úrovní', M, y, 11, { bold: true });
+  y += 6.5;
+  bar(d.levels, M, y, CW, 6.5, true);
+  y += 6.5 + 4.5;
+  const lw = CW / 4;
+  const legend = d.levelNames.map(name => split(name, lw - 9, 9, true));
+  d.levelNames.forEach((name, i) => {
+    const x = M + i * lw;
+    badge(i + 1, x, y + 2.3);
+    legend[i].forEach((line, k) => mid(line, x + 6.6, y + 2.3 + k * LH(9), 9, { bold: true }));
+    const c = d.levels[i];
+    text(`${c} ${zamW(c)} · ${Math.round(c / d.total * 100)} %`, x + 6.6, y + 5.4 + (legend[i].length - 1) * LH(9), 8, { color: C.ink2 });
+  });
+  y += 15 + (Math.max(...legend.map(l => l.length)) - 1) * LH(9);
+
+  // ---- přehled oddělení
+  need(30);
+  text('Přehled oddělení', M, y, 11, { bold: true });
+  y += 6.5;
+  const sx = { name: M, count: M + 86, lv: M + 92, bar: M + 140 };
+  const lvW = 11, SRH = 7;
+  const sumHead = () => {
+    const o = { bold: true, color: C.ink2 };
+    text('Oddělení', sx.name, y + 0.6, 7.8, o);
+    text('Lidí', sx.count, y + 0.6, 7.8, { ...o, align: 'right' });
+    [1, 2, 3, 4].forEach(n => badge(n, sx.lv + (n - 1) * lvW + (lvW - 4) / 2, y + 2, 4));
+    text('Rozložení', sx.bar, y + 0.6, 7.8, o);
+    y += 5.2;
+    hline(y, C.line2, 0.3);
+  };
+  const sumRow = (name, count, levels, bold) => {
+    const lines = split(name, 70, 9.5, bold);
+    const h = SRH + (lines.length - 1) * LH(9.5);
+    if (need(h)) sumHead();
+    const cy = y + SRH / 2;
+    lines.forEach((line, k) => mid(line, sx.name, cy + k * LH(9.5), 9.5, { bold }));
+    mid(count, sx.count, cy, 9.5, { bold, align: 'right' });
+    levels.forEach((c, i) => mid(c || '–', sx.lv + i * lvW + lvW / 2, cy, 9.5, { bold: bold && c > 0, color: c ? C.ink : C.ink3, align: 'center' }));
+    bar(levels, sx.bar, cy - 1.4, M + CW - sx.bar, 2.8, false);
+    y += h;
+  };
+  sumHead();
+  d.groups.forEach((g, i) => {
+    sumRow(g.dept, g.people.length, g.levels, false);
+    if (i < d.groups.length - 1) hline(y);
+  });
+  need(SRH);
+  hline(y, C.ink, 0.35);
+  sumRow('Celkem', d.total, d.levels, true);
+  y += 3;
+  const note = split(`Seznam obsahuje jen zařazené zaměstnance, tedy ty, kdo mají pozici i úroveň. Úroveň 1–4 vyjadřuje zkušenost na pozici${d.positions.some(p => p.levels.some(l => l.desc)) ? '; co která úroveň obnáší, je popsané na konci dokumentu' : ''}.`, CW, 8.5);
+  need(note.length * LH(8.5, 1.45));
+  note.forEach((line, i) => text(line, M, y + i * LH(8.5, 1.45), 8.5, { color: C.ink2 }));
+  y += note.length * LH(8.5, 1.45) + 3;
+
+  // ---- potvrzení (pod souhrnem, ať nezůstane samo na poslední stránce)
+  need(22);
+  const sw = (CW - 12) / 3;
+  ['Zpracovatel', 'Datum', 'Podpis'].forEach((label, i) => {
+    const x = M + i * (sw + 6);
+    hline(y + 10, C.line2, 0.3, x, x + sw);
+    text(label, x, y + 11.6, 8, { color: C.ink3 });
+  });
+  y += 24;
+
+  // ---- seznam po odděleních
+  const col = { no: M + 8, name: M + 12, pos: M + 88, lv: M + 136 };
+  const nameW = col.pos - col.name - 3, posW = col.lv - col.pos - 3, lvlW = M + CW - col.lv - 6.6;
+  const RH = 6.8, HEAD = 6.6, ROWLH = LH(10, 1.25);
+  const personRow = p => {
+    const inline = width(p.last, 10, true) + 1.6 + width(p.first, 10) <= nameW;
+    const name = inline ? null : [...split(p.last, nameW, 10, true).map(t => [t, true]), ...split(p.first, nameW, 10).map(t => [t, false])];
+    const pos = split(p.pos, posW, 9.5);
+    const lvl = split(p.level, lvlW, 9.5);
+    const lines = Math.max(inline ? 1 : name.length, pos.length, lvl.length);
+    return { p, inline, name, pos, lvl, h: RH + (lines - 1) * ROWLH };
+  };
+  const drawPerson = (r, i) => {
+    const { p } = r;
+    const cy = y + RH / 2; // střed prvního řádku; další řádky pod ním
+    mid(i + 1, col.no, cy, 8.5, { color: C.ink3, align: 'right' });
+    if (r.inline) {
+      mid(p.last, col.name, cy, 10, { bold: true });
+      mid(p.first, col.name + width(p.last, 10, true) + 1.6, cy, 10);
+    } else r.name.forEach(([t, bold], k) => mid(t, col.name, cy + k * ROWLH, 10, { bold }));
+    r.pos.forEach((t, k) => mid(t, col.pos, cy + k * ROWLH, 9.5, { color: C.ink2 }));
+    badge(p.n, col.lv, cy);
+    r.lvl.forEach((t, k) => mid(t, col.lv + 6.6, cy + k * ROWLH, 9.5));
+  };
+  const band = (g, titles, bh, cont) => {
+    box(C.soft, M, y, CW, bh);
+    box(C.acc, M, y, 1.3, bh);
+    const first = y + bh / 2 - (titles.length - 1) * LH(12.5) / 2;
+    titles.forEach((t, k) => mid(t, M + 5, first + k * LH(12.5), 12.5, { bold: true }));
+    if (cont) mid('· pokračování', M + 5 + width(titles[titles.length - 1], 12.5, true) + 2, first + (titles.length - 1) * LH(12.5), 9, { color: C.ink3 });
+    mid(`${g.people.length} ${zamW(g.people.length)}`, M + CW - 4, y + bh / 2, 9, { color: C.ink2, align: 'right' });
+    y += bh;
+  };
+  const head = () => {
+    y += 1.6;
+    const o = { bold: true, color: C.ink2 };
+    text('#', col.no, y + 0.6, 7.8, { ...o, align: 'right' });
+    text('Příjmení a jméno', col.name, y + 0.6, 7.8, o);
+    text('Pozice', col.pos, y + 0.6, 7.8, o);
+    text('Úroveň', col.lv, y + 0.6, 7.8, o);
+    y += HEAD - 1.6;
+    hline(y, C.line2, 0.3);
+  };
+  let heading = true; // nadpis jde na stranu spolu s prvním oddělením
+  d.groups.forEach(g => {
+    const rows = g.people.map(personRow);
+    const titles = split(g.dept, CW - 62, 12.5, true);
+    const bandH = Math.max(10.5, titles.length * LH(12.5) + 5.2);
+    const showPos = g.positions.length > 1 || g.positions[0] !== g.dept;
+    const posLines = showPos ? split(`Pozice: ${g.positions.join(', ')}`, CW - 10, 8.5) : [];
+    const posH = posLines.length ? posLines.length * LH(8.5) + 2.4 : 0;
+    const sum = (from, to) => rows.slice(from, to).reduce((s, r) => s + r.h, 0);
+    const lead = heading ? 8.5 : 0;
+    const total = lead + bandH + posH + HEAD + sum(0);
+    // Oddělení, které se vejde na jednu stranu, se nerozdělí. Delší začne tam, kde je místo aspoň na 6 lidí.
+    if (y + total > BOTTOM && (total <= PAGE || y + lead + bandH + posH + HEAD + sum(0, 6) > BOTTOM)) newPage();
+    if (heading) { text('Seznam podle oddělení', M, y, 13, { bold: true }); y += lead; heading = false; }
+    band(g, titles, bandH, false);
+    posLines.forEach((line, k) => text(line, M + 5, y + 1.8 + k * LH(8.5), 8.5, { color: C.ink2 }));
+    y += posH;
+    head();
+    let firstOnPage = 0;
+    rows.forEach((r, i) => {
+      const rest = rows.length - i;
+      // Na novou stranu nezůstanou osamocení jeden nebo dva lidé: raději přejdou tři.
+      const widow = rest === 3 && i - firstOnPage >= 3 && y + sum(i) > BOTTOM;
+      if (y + r.h > BOTTOM || widow) {
+        newPage();
+        band(g, titles, bandH, true);
+        head();
+        firstOnPage = i;
+      } else if (i > firstOnPage && r.p.n !== rows[i - 1].p.n) hline(y, C.line2, 0.35); // hranice mezi úrovněmi
+      drawPerson(r, i);
+      y += r.h;
+      hline(y);
+    });
+    y += 8;
+  });
+
+  // ---- co znamenají úrovně (jen pozice, které mají vyplněný popis)
+  const described = d.positions.filter(p => p.levels.some(l => l.desc));
+  if (described.length) {
+    const DX = M + 46, DW = CW - 46, DLH = LH(9, 1.38);
+    let heading = true;
+    described.forEach(p => {
+      const titles = split(p.name, CW, 10.5, true);
+      const tag = p.dept !== p.name ? `oddělení ${p.dept}` : '';
+      const tagInline = tag && titles.length === 1 && width(titles[0], 10.5, true) + 3 + width(tag, 9) <= CW;
+      const tags = tag && !tagInline ? split(tag, CW, 9) : [];
+      const titleH = titles.length * LH(10.5) + tags.length * LH(9) + 2.6;
+      const rows = p.levels.map(l => {
+        const names = split(l.name, DX - M - 9, 9, true);
+        const descs = l.desc ? split(l.desc, DW, 9) : ['—'];
+        return { l, names, descs, h: Math.max(names.length, descs.length) * DLH + 2.8 };
+      });
+      const lead = heading ? 10.5 : 0;
+      const blockH = lead + titleH + 2 + rows.reduce((s, r) => s + r.h, 0) + 5;
+      if (y + blockH > BOTTOM && blockH <= PAGE) newPage();
+      if (heading) { y += y > M ? 2 : 0; text('Co znamenají úrovně', M, y, 13, { bold: true }); y += 8.5; heading = false; }
+      titles.forEach((t, k) => text(t, M, y + k * LH(10.5), 10.5, { bold: true }));
+      if (tagInline) text(tag, M + width(titles[0], 10.5, true) + 3, y + 0.5, 9, { color: C.ink2 });
+      tags.forEach((t, k) => text(t, M, y + titles.length * LH(10.5) + k * LH(9), 9, { color: C.ink2 }));
+      y += titleH;
+      hline(y, C.line2, 0.3);
+      y += 2;
+      rows.forEach(r => {
+        need(r.h);
+        badge(r.l.n, M, y + 2.2);
+        r.names.forEach((t, k) => text(t, M + 6.6, y + 0.6 + k * DLH, 9, { bold: true }));
+        r.descs.forEach((t, k) => text(t, DX, y + 0.6 + k * DLH, 9, { color: r.l.desc ? C.ink2 : C.ink3 }));
+        y += r.h;
+      });
+      y += 5;
+    });
+  }
+
+  // ---- zápatí
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i += 1) {
+    doc.setPage(i);
+    hline(H - 13.5, C.line, 0.2);
+    text(`Odměny · Zaměstnanci podle oddělení a úrovně · stav k ${d.date}`, M, H - 11.5, 7.5, { color: C.ink3 });
+    text(`Strana ${i} / ${pages}`, M + CW, H - 11.5, 7.5, { color: C.ink3, align: 'right' });
+  }
+}
+
+async function exportPeoplePdf() {
+  const roster = auditRoster();
+  if (!roster.total) { toast('V PDF by nikdo nebyl: nikdo není zařazený na pozici s úrovní.', true); return; }
+  const button = $('#btnPeoplePdf');
+  button.disabled = true;
+  try {
+    const doc = await newPdf();
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    // Názvy úrovní do legendy: společné, pokud je všechny pozice mají stejné.
+    const levelNames = [0, 1, 2, 3].map(i => {
+      const names = [...new Set(roster.positions.map(p => p.levels[i].name))];
+      return names.length === 1 ? names[0] : `Úroveň ${i + 1}`;
+    });
+    const d = {
+      ...roster, levelNames,
+      date: `${now.getDate()}. ${now.getMonth() + 1}. ${now.getFullYear()}`,
+      time: `${now.getHours()}:${pad(now.getMinutes())}`,
+    };
+    doc.setProperties({ title: 'Zaměstnanci podle oddělení a úrovně', subject: `Stav k ${d.date}`, creator: 'Odměny' });
+    drawPeoplePdf(doc, d);
+    downloadFile(`zamestnanci-podle-oddeleni-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.pdf`, doc.output('blob'), 'application/pdf');
+    const skipped = [roster.unassigned ? `nezařazení (${roster.unassigned})` : '', roster.excluded ? `vyřazení (${roster.excluded})` : ''].filter(Boolean);
+    toast(`PDF se stahuje: ${roster.total} ${zamW(roster.total)}, oddělení: ${roster.groups.length}.${skipped.length ? ` Nejsou v něm ${skipped.join(' a ')}.` : ''}`);
+  } catch (error) {
+    toast(`PDF se nepovedlo: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -1569,6 +1908,7 @@ function bindEvents() {
     save(); renderPeople(); renderOverview(); renderPeriodBits();
   };
   $('#btnExpRoster').onclick = exportRoster;
+  $('#btnPeoplePdf').onclick = exportPeoplePdf;
   $('#btnImpRoster').onclick = () => $('#rosterFile').click();
   $('#rosterFile').onchange = event => { readRoster(event.target.files[0]); event.target.value = ''; };
 
